@@ -4,11 +4,6 @@ clc; close all; clear all;
 load('Data/H3N2_data.mat')
 T = size(XList,1);
 
-for t = 1 : T
-    XList{t} = XList{t}(1:500,:);
-    YList{t} = YList{t}(1:500,:);
-end
-SSS = SSS(1:500,1:500);
 
 
 M = 30;
