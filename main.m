@@ -1,117 +1,107 @@
-clc; close all; clear all;
+clc; clearvars; close all;
 
+addpath('data')
+addpath(genpath('models'))
+addpath('evaluation')
  
-load('Data/H3N2_data.mat')
+load('H3N2_data.mat')
 T = size(XList,1);
-
-
 
 M = 30;
 eta = 0.3;
 lambda = 0.1;
 
+models_names = {'LR','GCRF','SE','WSE','AST-SE'};
+num_models = size(models_names,2);
+test_mses = -1*ones(T-1,num_models);
 
-
-ERRORS = [];
-
-TSE_models_PREV = -1;
-TSE_params_PREV = -1;
-w_PREV = -1;
-
+ASTSE_models_prev = -1;
+ASTSE_params_prev = -1;
+ASTSE_w_prev = -1;
+X_prev = -1;
+Y_prev = -1;
+S_prev = -1;
 
 rng(1, 'twister');
-
+    
 for t = 1 : T - 1
     
-
+    X_train = XList{t};
+    Y_train = YList{t};
+    S_train = S;
     
-    % Construct train and test data
-    Xtrain = XList{t};
-    Ytrain = YList{t};
-    Strain = SSS;
-    Ntrain = size(Xtrain,1);
-    
-    Xtest = XList{t+1};
-    Ytest = YList{t+1};
-    Stest = SSS;
-    Ntest = size(Xtest,1);
+    X_test = XList{t+1};
+    Y_test = YList{t+1};
+    S_test = S;
     
     
-    
-    % Unstructured regressor
-    base_model = base_train(Xtrain, Ytrain);
-    Rtrain = base_predict(base_model,Xtrain);
-    Rtest = base_predict(base_model,Xtest);
-    UR_testMSE = calc_MSE(Ytest, Rtest);
-    
+	% LR: A regularized Linear Regression model is used as an UR (unstructured regressor)
+    base_model = UR_train(X_train, Y_train);
+    Rtrain = UR_predict(base_model,X_train);
+    Rtest = UR_predict(base_model,X_test);
+    UR_test_mse = calc_mse(Y_test, Rtest);
     
     
-    % GCRF
-    theta = GCRF_train(Ytrain,Strain,Rtrain);
-    mu = GCRF_predict(theta, 1, Stest, Rtest);
-    GCRF_testMSE = calc_MSE(Ytest, mu);
+    % GCRF: Standard Gaussian Conditional Random Field
+    theta = GCRF_train(Y_train,S_train,Rtrain);
+    GCRF_preds = GCRF_predict(theta, 1, S_test, Rtest);
+    GCRF_test_mse = calc_mse(Y_test, GCRF_preds);
     
     
-    
-    % TSE
-    [TSE_models, TSE_params] = TSE_train(Xtrain, Ytrain, Strain, M, eta);
-    predictions_test = TRE_get_predictions(TSE_models, TSE_params, Xtest, Stest);
-    avg_mu = mean(predictions_test,2);
-    TSE_testMSE = calc_MSE(Ytest, avg_mu);
-    
+    % SE: Structured Ensemble composed of multiple GCRF models
+    [SE_models, SE_params] = SE_train(X_train, Y_train, S_train, M, eta);
+    predictions_test = SE_get_base_predictions(SE_models, SE_params, X_test, S_test);
+    SE_preds = mean(predictions_test,2);
+    SE_test_mse = calc_mse(Y_test, SE_preds);
     
     
-    % Weighted TSE
-    predictions_train = TRE_get_predictions(TSE_models, TSE_params, Xtrain, Strain);
-    w = infer_weights(Ytrain, predictions_train, lambda);
-    wavg_mu = predictions_test * w';
-    WTSE_testMSE = calc_MSE(Ytest, wavg_mu);
+    % WSE: Weighted Structured Ensemble
+    predictions_train = SE_get_base_predictions(SE_models, SE_params, X_train, S_train);
+    w = get_weights(Y_train, predictions_train, lambda);
+    WSE_preds = predictions_test * w';
+    WSE_test_mse = calc_mse(Y_test, WSE_preds);
     
     
+    % AST-SE: Adaptive Skip-Train Structured Ensemble
+    if t > 1
+        X_prev = XList{t-1};
+        Y_prev = YList{t-1};
+        S_prev = S;
+    end    
+    [ASTSE_models, ASTSE_params, ASTSE_w, state, chooses_min] = ASTSE_train(X_prev, Y_prev, S_prev, XList{t}, YList{t}, S, ...
+                                                                            ASTSE_models_prev, ASTSE_params_prev, ASTSE_w_prev, M, eta, lambda);
+    ASTSE_models_prev = ASTSE_models;
+    ASTSE_params_prev = ASTSE_params;
+    ASTSE_w_prev = ASTSE_w;
     
-    % Skip-step TSE
-    if t == 1
-        X_PREV = -1;
-        Y_PREV = -1;
-        S_PREV = -1;
-    else
-        X_PREV = XList{t-1};
-        Y_PREV = YList{t-1};
-        S_PREV = SSS;
-    end
-    [TSE_models_FINAL, TSE_params_FINAL, w_FINAL, state, chooses_min] = SSTSE_train(X_PREV, Y_PREV, S_PREV, XList{t}, YList{t}, SSS, ...
-                                                                                    TSE_models_PREV, TSE_params_PREV, w_PREV, M, eta, lambda);
-
-    TSE_models_PREV = TSE_models_FINAL;
-    TSE_params_PREV = TSE_params_FINAL;
-    w_PREV = w_FINAL;
-
-
-    predictions_test = TRE_get_predictions(TSE_models_FINAL, TSE_params_FINAL, Xtest, Stest);
-    sswavg_mu = predictions_test * w_FINAL';
-    SSWTSE_testMSE = calc_MSE(Ytest, sswavg_mu);
+    ASTSE_preds = SE_get_base_predictions(ASTSE_models, ASTSE_params, X_test, S_test);
+    ASTSE_preds = ASTSE_preds * ASTSE_w';
+    ASTSE_test_mse = calc_mse(Y_test, ASTSE_preds);
+	
     
+    % Store testing MSEs
+    test_mses(t,:) = [UR_test_mse, GCRF_test_mse, SE_test_mse, WSE_test_mse, ASTSE_test_mse];
+    fprintf('(t=%d)\t%f\t%f\t%f\t%f\t%f\n', t, UR_test_mse, GCRF_test_mse, SE_test_mse, WSE_test_mse, ASTSE_test_mse);
     
-    
-    sorted_errors = sortrows([[1:5]',[UR_testMSE, GCRF_testMSE, TSE_testMSE, WTSE_testMSE, SSWTSE_testMSE]'],2);
-    SSWTSE_rank = find(sorted_errors(:,1)==5);
-    fprintf('%d(%d)\t|\t', state, chooses_min);
-    
-    
-    % Errors
-    ERRORS = [ERRORS ; [UR_testMSE, GCRF_testMSE, TSE_testMSE, WTSE_testMSE, SSWTSE_testMSE]];
-    fprintf('(%d)\t%f\t%f\t%f\t%f\t%f\t%d\t|...\n', t, UR_testMSE, GCRF_testMSE, TSE_testMSE, WTSE_testMSE, SSWTSE_testMSE, SSWTSE_rank);
-       
 end
+
 
 fprintf('\n\n');
 
-fprintf('ERRORS:\n');
-for col = 1 : size(ERRORS,2)
-    mean_diff_pair = calc_conf_interval(ERRORS(:,col));
-    fprintf('%f\t%f\n', mean_diff_pair(1), mean_diff_pair(2));
+
+% Display average MSEs along with the corresponding confidence intervals
+avg_test_mses = -1*ones(num_models,1);
+conf_int_widths = -1*ones(num_models,1);
+for col = 1 : num_models
+    [mse_avg, mse_int_width] = calc_conf_interval(test_mses(:,col));
+    avg_test_mses(col) = mse_avg;
+    conf_int_widths(col) = mse_int_width;
 end
 
+fprintf('Average Testing MSEs:\n');
+res_table = table(avg_test_mses,conf_int_widths,'RowNames',models_names);
+res_table.Properties.VariableNames = {'Average_MSE' 'Conf_interval_width'};
+res_table
 
 
 
