@@ -88,23 +88,23 @@ else
     all_ASTSE_params = cell(3,1);
     all_ASTSE_w = cell(3,1);
     
-	% Calculate the LOSS of:
-	%   - the ensemble composed of:
-	%      * the components from the previous timestep
-	%      * the weights from the previous timestep
-	% with respect to:
-	%   - the validation graph from the previous timestep
+    % Calculate the LOSS of:
+    %   - the ensemble composed of:
+    %      * the components from the previous timestep
+    %      * the weights from the previous timestep
+    % with respect to:
+    %   - the validation graph from the previous timestep
     preds_prev_eval = SE_get_base_predictions(ASTSE_models_prev, ASTSE_params_prev, X_prev_eval, S_prev_eval);
     loss_0 = reg_quad_loss(ASTSE_w_prev, Y_prev_eval, preds_prev_eval, lambda);
     
-	% Calculate the LOSS of:
-	%   - the ensemble composed of:
-	%      * the components from the previous timestep
-	%      * the weights from the previous timestep
-	% with respect to:
-	%   - the validation graph from the current timestep
+    % Calculate the LOSS of:
+    %   - the ensemble composed of:
+    %      * the components from the previous timestep
+    %      * the weights from the previous timestep
+    % with respect to:
+    %   - the validation graph from the current timestep
     preds_curr_eval = SE_get_base_predictions(ASTSE_models_prev, ASTSE_params_prev, X_curr_eval, S_curr_eval);
-	loss_models_prev_w_prev = reg_quad_loss(ASTSE_w_prev, Y_curr_eval, preds_curr_eval, lambda);
+    loss_models_prev_w_prev = reg_quad_loss(ASTSE_w_prev, Y_curr_eval, preds_curr_eval, lambda);
     
     % Store components (unstructured predictors & GCRF parameters) and
     % weights for state 1
@@ -117,12 +117,12 @@ else
         state = 1;
     else
         % Calculate the LOSS of:
-		%   - the ensemble composed of:
-		%      * the components from the previous timestep
-		%      * weights learned on the training graph from the current
-		%        timestep
-		% with respect to:
-		%   - the validation graph from the current timestep   
+	%   - the ensemble composed of:
+	%      * the components from the previous timestep
+	%      * weights learned on the training graph from the current
+	%        timestep
+	% with respect to:
+	%   - the validation graph from the current timestep   
         preds_curr_train = SE_get_base_predictions(ASTSE_models_prev, ASTSE_params_prev, X_curr_train, S_curr_train);
         w_curr = get_weights(Y_curr_train, preds_curr_train, lambda);
         loss_models_prev_w_curr = reg_quad_loss(w_curr, Y_curr_eval, preds_curr_eval, lambda);
@@ -137,15 +137,15 @@ else
         if loss_models_prev_w_curr <= loss_0
             state = 2;
         else
-			% Calculate the LOSS of:
-			%   - the ensemble composed of:
-			%      * M_selected components from the previous timestep
-			%      * M-M_selected components retrained on the training
-			%        graph from the current timestep
-			%      * weights learned on the training graph from the current
-			%        timestep
-			% with respect to:
-			%   - the validation graph from the current timestep
+	    % Calculate the LOSS of:
+	    %   - the ensemble composed of:
+	    %      * M_selected components from the previous timestep
+	    %      * M-M_selected components retrained on the training
+	    %        graph from the current timestep
+	    %      * weights learned on the training graph from the current
+	    %        timestep
+	    % with respect to:
+	    %   - the validation graph from the current timestep
             sorted_weights = sortrows([(1:M)', w_curr'], 2);
             sorted_weight_diffs = (sorted_weights(2:M,2) - sorted_weights(1:M-1,2));
             [~,selection_threshold] = max(sorted_weight_diffs);
@@ -180,7 +180,7 @@ else
             if loss_models_comb_w_curr <= loss_0
                 state = 3;
             else
-				% Choose the state in which the minimum loss was obtained
+		% Choose the state in which the minimum loss was obtained
                 [~,state] = min( [loss_models_prev_w_prev, loss_models_prev_w_curr, loss_models_comb_w_curr] );                
                 chooses_min = 1;
             end
